@@ -23,7 +23,7 @@ import java.util.function.Function;
  */
 public class Main {
     public static void main(String[] args) {
-        String propertyFileLocation = args[0];
+        String propertyFileLocation = args.length > 0 ? args[0] : "";
         //used for testing
         boolean testing = false;
         if (args.length > 1) {
@@ -36,7 +36,7 @@ public class Main {
             } catch (FileNotFoundException e) {
                 //used for testing
                 try {
-                    config.load(DatabaseManager.class.getResourceAsStream(propertyFileLocation));
+                    config.load(Main.class.getResourceAsStream("/config.properties"));
                 } catch (NullPointerException ignored) {
                     //just means it's also not in the jar
                 }

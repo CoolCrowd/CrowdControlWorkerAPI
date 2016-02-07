@@ -78,12 +78,28 @@ public class Router implements SparkApplication, RequestHelper {
         get("/next/:platform/:experiment", queries::getNext);
 
         post("/emails/:platform", commands::submitEmail);
+        options("/emails/:workerID", (request, response) -> {
+            response.status(200);
+            return "";
+        });
 
         post("/answers/:workerID", commands::submitAnswer);
+        options("/answers/:workerID", (request, response) -> {
+            response.status(200);
+            return "";
+        });
 
         post("/ratings/:workerID", commands::submitRating);
+        options("/ratings/:workerID", (request, response) -> {
+            response.status(200);
+            return "";
+        });
 
         post("/calibrations/:workerID", commands::submitCalibration);
+        options("/calibrations/:workerID", (request, response) -> {
+            response.status(200);
+            return "";
+        });
 
     }
 
