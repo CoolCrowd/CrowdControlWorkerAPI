@@ -10,6 +10,7 @@ import org.jooq.impl.DSL;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -58,53 +59,45 @@ public class TaskOperations extends AbstractOperation {
      * @return a map where the values are the answers to rate and the keys the ids of the ratings
      */
     public Map<Integer, AnswerRecord> prepareRating(int worker, int experiment, int amount) {
-        Map<Integer, AnswerRecord> answers = create.transactionResult(config -> {
+        return create.transactionResult(config -> {
             LocalDateTime limit = LocalDateTime.now().minus(2, ChronoUnit.HOURS);
             Timestamp timestamp = Timestamp.valueOf(limit);
             Field<Integer> count = DSL.count(RATING.ID_RATING).as("count");
-            Map<Integer, AnswerRecord> toRate = DSL.using(config).select()
+
+            List<AnswerRecord> toRate = DSL.using(config).select()
                     .select(ANSWER.fields())
                     .select(count)
                     .from(ANSWER)
-                    .leftJoin(RATING).on(RATING.ANSWER_R.eq(ANSWER.ID_ANSWER)
-                            .and(RATING.RATING_.isNotNull().or(RATING.TIMESTAMP.greaterOrEqual(timestamp))))
-                    .where(ANSWER.EXPERIMENT.eq(experiment))
-                    .and(ANSWER.WORKER_ID.notEqual(worker))
-                    .and(ANSWER.ID_ANSWER.notIn(
-                            DSL.select(RATING.ANSWER_R).where(RATING.WORKER_ID.eq(worker).and(RATING.EXPERIMENT.eq(experiment)))))
-                    .and(ANSWER.QUALITY_ASSURED.eq(true).and(ANSWER.QUALITY.notEqual(0)).or(DSL.condition(true)))
+                    .leftJoin(RATING).on(RATING.ANSWER_R.eq(ANSWER.ID_ANSWER))
+                    .where(ANSWER.EXPERIMENT.eq(experiment)
+                                    .and(ANSWER.TIMESTAMP.lessThan(timestamp))
+                    )
                     .groupBy(ANSWER.fields())
                     .having(count.lessThan(
-                            DSL.select(EXPERIMENT.RATINGS_PER_ANSWER).from(EXPERIMENT).where(EXPERIMENT.ID_EXPERIMENT.eq(experiment))))
-                    .orderBy(ANSWER.QUALITY_ASSURED.desc())
+                            //not that we are getting more ratings than we want
+                            DSL.select(EXPERIMENT.RATINGS_PER_ANSWER).from(EXPERIMENT).where(EXPERIMENT.ID_EXPERIMENT.eq(experiment))
+                    ))
+                    .orderBy(count.asc())
                     .limit(amount)
-                    .fetchMap(Tables.ANSWER.ID_ANSWER, record -> record.into(Tables.ANSWER));
+                    .fetch().map(record -> record.into(ANSWER));
 
+            HashMap<Integer, AnswerRecord> answerRecordRatingMap = new HashMap<>();
 
-            List<RatingRecord> emptyRatings = toRate.values().stream()
-                    .map(answer -> {
-                        RatingRecord ratingRecord = new RatingRecord();
-                        ratingRecord.setAnswerR(answer.getIdAnswer());
-                        ratingRecord.setWorkerId(worker);
-                        ratingRecord.setExperiment(experiment);
-                        return ratingRecord;
-                    })
-                    .collect(Collectors.toList());
+            for (AnswerRecord answerRecord : toRate) {
+                RatingRecord ratingRecord = new RatingRecord();
+                ratingRecord.setAnswerR(answerRecord.getIdAnswer());
+                ratingRecord.setWorkerId(worker);
+                ratingRecord.setExperiment(experiment);
 
-            DSL.using(config).batchInsert(emptyRatings).execute();
+                int id = DSL.using(config)
+                        .insertInto(RATING)
+                        .set(ratingRecord)
+                        .returning().fetchOne().getIdRating();
+                answerRecordRatingMap.put(id, answerRecord);
+            }
 
-            return toRate;
+            return answerRecordRatingMap;
         });
-
-        List<Integer> answerIds = answers.values().stream().map(AnswerRecord::getIdAnswer).collect(Collectors.toList());
-
-        Result<RatingRecord> ratings = create.selectFrom(RATING)
-                .where(RATING.ANSWER_R.in(answerIds))
-                .and(RATING.WORKER_ID.eq(worker))
-                .fetch();
-
-        return ratings.stream()
-                .collect(Collectors.toMap(RatingRecord::getIdRating, record -> answers.get(record.getAnswerR())));
     }
 
     /**
