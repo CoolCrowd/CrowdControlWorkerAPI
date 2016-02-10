@@ -70,14 +70,14 @@ public class TaskOperations extends AbstractOperation {
                     .from(ANSWER)
                     .leftJoin(RATING).on(RATING.ANSWER_R.eq(ANSWER.ID_ANSWER))
                     .where(ANSWER.EXPERIMENT.eq(experiment)
-                                    .and(ANSWER.TIMESTAMP.greaterThan(timestamp))
+                                    .and(ANSWER.TIMESTAMP.lessThan(timestamp))
                     )
                     .groupBy(ANSWER.fields())
                     .having(count.lessThan(
                             //not that we are getting more ratings than we want
                             DSL.select(EXPERIMENT.RATINGS_PER_ANSWER).from(EXPERIMENT).where(EXPERIMENT.ID_EXPERIMENT.eq(experiment))
                     ))
-                    .orderBy(count.desc())
+                    .orderBy(count.asc())
                     .limit(amount)
                     .fetch().map(record -> record.into(ANSWER));
 
